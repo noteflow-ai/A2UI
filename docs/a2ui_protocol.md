@@ -53,7 +53,7 @@ The protocol is designed to be "LLM-friendly," meaning its structure is declarat
 Communication occurs via a JSON Lines (JSONL) stream. The client parses each line as a distinct message and incrementally builds the UI. The server-to-client protocol defines four message types:
 
 - `surfaceUpdate`: Provides a list of component definitions to be added to or updated in a specific UI area called a "surface."
-- `dataModelUpdate`: Provides new data to be inserted into or to replace the client's data model. All surfaces share the same data model.
+- `dataModelUpdate`: Provides new data to be inserted into or to replace a surface's data model. Each surface has its own data model.
 - `beginRendering`: Signals to the client that it has enough information to perform the initial render, specifying the ID of the root component.
 - `surfaceDeletion`: Explicitly removes a surface and its contents from the UI.
 
@@ -85,7 +85,7 @@ A **Surface** is a contiguous portion of screen real estate into which a A2UI UI
 
 For example, in a chat application, each AI-generated response could be rendered into a separate surface within the conversation history. A separate, persistent surface could be used for a side panel that displays related information.
 
-The `surfaceId` is used in `surfaceUpdate` messages to direct component changes to the correct area, and the `surfaceDeletion` message allows for explicitly removing a surface and its contents from the UI.
+The `surfaceId` is a top-level property on server-to-client messages that directs changes to the correct area. It is used with messages like `surfaceUpdate`, `dataModelUpdate`, and `surfaceDeletion` to target a specific surface.
 
 ### 1.4. Data Flow Model
 
@@ -161,12 +161,12 @@ Unlike previous versions with a fixed component set, A2UI now defines components
 
 ### 2.2. The `updateSurface` Message
 
-This message is the primary way UI structure is defined. It contains a `components` array and targets a specific `surfaceId`.
+This message is the primary way UI structure is defined. It is sent with a top-level `surfaceId` and contains a `components` array.
 
 ```json
 {
+  "surfaceId": "main_content_area",
   "updateSurface": {
-    "surfaceId": "main_content_area",
     "components": [
       {
         "id": "unique-component-id",
@@ -186,7 +186,6 @@ This message is the primary way UI structure is defined. It contains a `componen
 }
 ```
 
-- `surfaceId`: An optional string identifying the UI surface to update. If omitted, a default surface is used.
 - `components`: A required flat list of component instances.
 
 ### 2.3. The Component Object
@@ -390,6 +389,7 @@ This message is sent when the user interacts with a component that has an action
 The `userAction` object has the following structure:
 
 - `actionName` (string, required): The name of the action, taken directly from the `action.action` property of the component (e.g., "submit_form").
+- `surfaceId` (string, required): The `id` of the surface where the event originated.
 - `sourceComponentId` (string, required): The `id` of the component that triggered the event (e.g., "my_button").
 - `timestamp` (string, required): An ISO 8601 timestamp of when the event occurred (e.g., "2025-09-19T17:01:00Z").
 - `context` (object, required): A JSON object containing the key-value pairs from the component's `action.context`, after resolving all `BoundValue`s against the data model.
@@ -447,6 +447,7 @@ This message provides a feedback mechanism for the server. It is sent when the c
     {
       "userAction": {
         "actionName": "submit_form",
+        "surfaceId": "main_content_area",
         "sourceComponentId": "submit_btn",
         "timestamp": "2025-09-19T17:05:00Z",
         "context": {
@@ -483,6 +484,10 @@ This section provides the formal JSON Schema for a single server-to-client messa
   "description": "A single message in the A2UI streaming UI protocol. Exactly ONE of the properties in this object must be set, corresponding to the specific message type.",
   "type": "object",
   "properties": {
+    "surfaceId": {
+      "type": "string",
+      "description": "An ID for the surface that the UI changes should be applied to. If this surface doesn't exist, it will be created. If this is not specified, the default surface will be used."
+    },
     "beginRendering": {
       "title": "BeginRendering Message",
       "description": "A schema for a BeginRendering message in the A2UI streaming UI protocol. This message signals that the UI can now be rendered and provides initial root component and styling information.",
@@ -502,15 +507,11 @@ This section provides the formal JSON Schema for a single server-to-client messa
         "root"
       ]
     },
-    "updateSurface": {
+    "surfaceUpdate": {
       "title": "UpdateSurface Message",
       "description": "A schema for a updateSurface message in the A2UI streaming UI protocol.",
       "type": "object",
       "properties": {
-        "surfaceId": {
-          "type": "string",
-          "description": "An ID for the surface that the UI changes should be applied to. If this surface doesn't exist, it will be created. If this is not specified, the default surface will be used."
-        },
         "components": {
           "type": "array",
           "description": "A flat list of all component instances available for rendering. Components reference each other by ID. This property is REQUIRED.",
@@ -560,15 +561,8 @@ This section provides the formal JSON Schema for a single server-to-client messa
       "title": "SurfaceDeletion Message",
       "description": "A schema for a surfaceDeletion message in the A2UI streaming UI protocol. This message signals that a surface should be removed from the UI.",
       "type": "object",
-      "properties": {
-        "surfaceId": {
-          "type": "string",
-          "description": "The ID of the surface to be deleted. This property is REQUIRED."
-        }
-      },
-      "required": [
-        "surfaceId"
-      ]
+      "properties": {},
+      "required": []
     }
   }
 }
